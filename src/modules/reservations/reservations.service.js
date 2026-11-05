@@ -1,4 +1,4 @@
-const { NotFoundError, ConflictError, ValidationError } = require("../../errors/AppError");
+const { NotFoundError, ConflictError, ValidationError, ForbiddenError } = require("../../errors/AppError");
 
 const MINUTE = 60 * 1000;
 const MIN_DURATION = 15 * MINUTE;  // 15 minut
@@ -19,10 +19,26 @@ function bodyError(field, message) {
   return new ValidationError([{ location: "body", field, message }]);
 }
 
+// ownership: właściciel albo ADMIN
+function canAccess(reservation, currentUser) {
+  return currentUser.role === "ADMIN" || reservation.userId === currentUser.id;
+}
+
 function createReservationsService({ runInTransaction, now = () => new Date() }) {
-  async function listReservations(query) {
+  async function listReservations(query, currentUser) {
+    let userId = query.userId;
+
+    if (currentUser.role !== "ADMIN") {
+      // filtr ?userId= jest tylko dla ADMINa - USER dostaje jawne 403
+      if (query.userId !== undefined) {
+        throw new ForbiddenError("Filter userId is available only for ADMIN");
+      }
+      // USER widzi wyłącznie swoje rezerwacje - filtr dokłada backend, niezależnie od query
+      userId = currentUser.id;
+    }
+
     return runInTransaction(async ({ reservations }) => {
-      const { items, total } = await reservations.list(query);
+      const { items, total } = await reservations.list({ ...query, userId });
       return {
         items,
         meta: { page: query.page, limit: query.limit, total, totalPages: Math.ceil(total / query.limit) }
@@ -30,15 +46,18 @@ function createReservationsService({ runInTransaction, now = () => new Date() })
     });
   }
 
-  async function getReservation(id) {
-    return runInTransaction(async ({ reservations }) => {
-      const reservation = await reservations.findById(id);
-      if (!reservation) throw new NotFoundError("Reservation");
-      return reservation;
-    });
+  // cudza rezerwacja -> 404 (rezerwacje są prywatne - nie zdradzamy, że istnieją)
+  async function findAccessible(reservations, id, currentUser) {
+    const reservation = await reservations.findById(id);
+    if (!reservation || !canAccess(reservation, currentUser)) throw new NotFoundError("Reservation");
+    return reservation;
   }
 
-  async function createReservation(input) {
+  async function getReservation(id, currentUser) {
+    return runInTransaction(({ reservations }) => findAccessible(reservations, id, currentUser));
+  }
+
+  async function createReservation(input, currentUser) {
     const start = new Date(input.startTime).getTime();
     const end = new Date(input.endTime).getTime();
     const duration = end - start;
@@ -67,30 +86,23 @@ function createReservationsService({ runInTransaction, now = () => new Date() })
         throw new ConflictError("Przekroczono pojemnosc sali", "ROOM_CAPACITY_EXCEEDED");
       }
 
-      // TYLKO DO DEMONSTRACJI (zadanie 5): DEMO_SKIP_APP_CHECK=1 wyłącza blokadę i sprawdzenie
-      // w aplikacji, żeby pokazać, że exclusion constraint w bazie sam blokuje duplikaty
-      if (!process.env.DEMO_SKIP_APP_CHECK) {
-        // blokujemy wiersz sali: równoległe rezerwacje TEJ SAMEJ sali czekają tu w kolejce,
-        // aż poprzednia transakcja zrobi COMMIT - dopiero wtedy sprawdzają kolizje
-        await rooms.lockById(room.id);
+      // blokujemy wiersz sali: równoległe rezerwacje TEJ SAMEJ sali czekają tu w kolejce,
+      // aż poprzednia transakcja zrobi COMMIT - dopiero wtedy sprawdzają kolizje
+      await rooms.lockById(room.id);
 
-        // brak nakładających się aktywnych rezerwacji -> 409
-        const active = await reservations.findByRoomAndStatus(room.id, "CONFIRMED");
-        const collision = active.some(r =>
-          overlaps(start, end, new Date(r.startTime).getTime(), new Date(r.endTime).getTime())
-        );
-        if (collision) {
-          throw new ConflictError("Sala jest juz zarezerwowana w tym czasie", "ROOM_ALREADY_BOOKED");
-        }
+      // brak nakładających się aktywnych rezerwacji -> 409
+      // (druga linia obrony: exclusion constraint reservations_no_overlap w bazie -> 23P01 -> 409)
+      const active = await reservations.findByRoomAndStatus(room.id, "CONFIRMED");
+      const collision = active.some(r =>
+        overlaps(start, end, new Date(r.startTime).getTime(), new Date(r.endTime).getTime())
+      );
+      if (collision) {
+        throw new ConflictError("Sala jest juz zarezerwowana w tym czasie", "ROOM_ALREADY_BOOKED");
       }
-
-      // TYLKO DO DEMONSTRACJI race condition (zadanie 5) - do usunięcia na koniec
-      const demoDelay = Number(process.env.DEMO_DELAY_MS ?? 0);
-      if (demoDelay > 0) await new Promise(resolve => setTimeout(resolve, demoDelay));
 
       return reservations.create({
         roomId: room.id,
-        reservedBy: input.reservedBy,
+        userId: currentUser.id, // właściciel wyłącznie z tokenu
         participants: input.participants,
         startTime: new Date(start),
         endTime: new Date(end),
@@ -102,10 +114,9 @@ function createReservationsService({ runInTransaction, now = () => new Date() })
     });
   }
 
-  async function cancelReservation(id) {
+  async function cancelReservation(id, currentUser) {
     return runInTransaction(async ({ reservations }) => {
-      const reservation = await reservations.findById(id);
-      if (!reservation) throw new NotFoundError("Reservation");
+      const reservation = await findAccessible(reservations, id, currentUser);
 
       const newStatus = "CANCELLED";
 
@@ -119,6 +130,7 @@ function createReservationsService({ runInTransaction, now = () => new Date() })
         );
       }
 
+      // reguła obowiązuje także ADMINa
       if (new Date(reservation.startTime).getTime() <= now().getTime()) {
         throw new ConflictError(
           "Nie mozna anulowac rezerwacji, ktora juz sie rozpoczela",

@@ -1,0 +1,162 @@
+@baseUrl = http://localhost:3000/api
+
+############################################
+# ZADANIE 4 - role i ownership
+############################################
+# Najpierw zaloguj wszystkie 3 konta (4.0a-c), potem wysyłaj po kolei od góry.
+# Właściciel = mateusz (id 2, rezerwacje 1, 6, 7), obcy = karolina (id 3, rezerwacja 2)
+
+### 4.0a login ADMIN
+# @name admin
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "admin@example.com", "password": "Admin-Haslo-2026" }
+
+### 4.0b login USER właściciel (mateusz, id 2)
+# @name owner
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "mateusz.kalinski@example.com", "password": "Haslo-Testowe-2026" }
+
+### 4.0c login USER obcy (karolina, id 3)
+# @name other
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "karolina.nowak@example.com", "password": "Haslo-Testowe-2026" }
+
+### ---------- GET /api/buildings: brak tokenu / właściciel / obcy / ADMIN
+GET {{baseUrl}}/buildings
+
+###
+GET {{baseUrl}}/buildings
+Authorization: Bearer {{owner.response.body.accessToken}}
+
+###
+GET {{baseUrl}}/buildings
+Authorization: Bearer {{other.response.body.accessToken}}
+
+###
+GET {{baseUrl}}/buildings
+Authorization: Bearer {{admin.response.body.accessToken}}
+
+### ---------- POST /api/buildings: brak tokenu / właściciel / obcy / ADMIN
+POST {{baseUrl}}/buildings
+Content-Type: application/json
+
+{ "name": "Budynek D - Mechanika", "address": "ul. Kampusowa 22, Kraków" }
+
+###
+POST {{baseUrl}}/buildings
+Content-Type: application/json
+Authorization: Bearer {{owner.response.body.accessToken}}
+
+{ "name": "Budynek D - Mechanika", "address": "ul. Kampusowa 22, Kraków" }
+
+###
+POST {{baseUrl}}/buildings
+Content-Type: application/json
+Authorization: Bearer {{other.response.body.accessToken}}
+
+{ "name": "Budynek D - Mechanika", "address": "ul. Kampusowa 22, Kraków" }
+
+###
+POST {{baseUrl}}/buildings
+Content-Type: application/json
+Authorization: Bearer {{admin.response.body.accessToken}}
+
+{ "name": "Budynek D - Mechanika", "address": "ul. Kampusowa 22, Kraków" }
+
+### ---------- POST /api/rooms: brak tokenu / właściciel / obcy / ADMIN
+POST {{baseUrl}}/rooms
+Content-Type: application/json
+
+{ "buildingId": 3, "name": "C001", "capacity": 25 }
+
+###
+POST {{baseUrl}}/rooms
+Content-Type: application/json
+Authorization: Bearer {{owner.response.body.accessToken}}
+
+{ "buildingId": 3, "name": "C001", "capacity": 25 }
+
+###
+POST {{baseUrl}}/rooms
+Content-Type: application/json
+Authorization: Bearer {{other.response.body.accessToken}}
+
+{ "buildingId": 3, "name": "C001", "capacity": 25 }
+
+###
+POST {{baseUrl}}/rooms
+Content-Type: application/json
+Authorization: Bearer {{admin.response.body.accessToken}}
+
+{ "buildingId": 3, "name": "C001", "capacity": 25 }
+
+### ---------- GET /api/reservations: brak tokenu / właściciel / obcy / ADMIN
+GET {{baseUrl}}/reservations
+
+###
+GET {{baseUrl}}/reservations
+Authorization: Bearer {{owner.response.body.accessToken}}
+
+###
+GET {{baseUrl}}/reservations
+Authorization: Bearer {{other.response.body.accessToken}}
+
+###
+GET {{baseUrl}}/reservations
+Authorization: Bearer {{admin.response.body.accessToken}}
+
+### ---------- GET /api/reservations?userId=3: brak tokenu / właściciel / obcy / ADMIN
+GET {{baseUrl}}/reservations?userId=3
+
+###
+GET {{baseUrl}}/reservations?userId=3
+Authorization: Bearer {{owner.response.body.accessToken}}
+
+###
+GET {{baseUrl}}/reservations?userId=3
+Authorization: Bearer {{other.response.body.accessToken}}
+
+###
+GET {{baseUrl}}/reservations?userId=3
+Authorization: Bearer {{admin.response.body.accessToken}}
+
+### ---------- GET /api/reservations/6: brak tokenu / właściciel / obcy / ADMIN
+GET {{baseUrl}}/reservations/6
+
+###
+GET {{baseUrl}}/reservations/6
+Authorization: Bearer {{owner.response.body.accessToken}}
+
+###
+GET {{baseUrl}}/reservations/6
+Authorization: Bearer {{other.response.body.accessToken}}
+
+###
+GET {{baseUrl}}/reservations/6
+Authorization: Bearer {{admin.response.body.accessToken}}
+
+### ---------- PATCH /api/reservations/6/cancel: brak tokenu / obcy / właściciel / ADMIN
+# kolejność: obcy przed właścicielem (po anulowaniu przez właściciela ADMIN dostaje 200 bez zmian)
+PATCH {{baseUrl}}/reservations/6/cancel
+
+###
+PATCH {{baseUrl}}/reservations/6/cancel
+Authorization: Bearer {{other.response.body.accessToken}}
+
+###
+PATCH {{baseUrl}}/reservations/6/cancel
+Authorization: Bearer {{owner.response.body.accessToken}}
+
+###
+PATCH {{baseUrl}}/reservations/6/cancel
+Authorization: Bearer {{admin.response.body.accessToken}}
+
+### ---------- reguły biznesowe obowiązują także ADMINa: anulowanie rozpoczętej rezerwacji 1 -> 409
+PATCH {{baseUrl}}/reservations/1/cancel
+Authorization: Bearer {{admin.response.body.accessToken}}

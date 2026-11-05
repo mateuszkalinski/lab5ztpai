@@ -14,6 +14,18 @@ class ValidationError extends AppError {
   }
 }
 
+class UnauthorizedError extends AppError {
+  constructor(message = "Authentication required", code = "UNAUTHORIZED") {
+    super(message, 401, code);
+  }
+}
+
+class ForbiddenError extends AppError {
+  constructor(message = "Insufficient permissions", code = "FORBIDDEN") {
+    super(message, 403, code);
+  }
+}
+
 class NotFoundError extends AppError {
   constructor(resource) {
     super(`${resource} not found`, 404, "NOT_FOUND");
@@ -26,4 +38,4 @@ class ConflictError extends AppError {
   }
 }
 
-module.exports = { AppError, ValidationError, NotFoundError, ConflictError };
+module.exports = { AppError, ValidationError, UnauthorizedError, ForbiddenError, NotFoundError, ConflictError };

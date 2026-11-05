@@ -1,3 +1,4 @@
 node_modules
 .env
 service-diff.txt
+auth-tests-output.txt

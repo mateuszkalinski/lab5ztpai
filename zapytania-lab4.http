@@ -1,0 +1,152 @@
+@baseUrl = http://localhost:3000/api
+
+# Przed testami: npx knex seed:run
+# Konta z seeda:
+#   admin@example.com            / Admin-Haslo-2026   (ADMIN)
+#   mateusz.kalinski@example.com / Haslo-Testowe-2026 (USER, rezerwacje 1 i 6)
+#   karolina.nowak@example.com   / Haslo-Testowe-2026 (USER, rezerwacja 2)
+
+############################################
+# ZADANIE 1 - rejestracja
+############################################
+
+### 1.1 rejestracja -> 201 (email zapisany małymi literami, rola USER, bez hasha)
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "Jan.Kowalski@example.com",
+  "password": "bardzo-dlugie-haslo"
+}
+
+### 1.2 próba rejestracji z rolą ADMIN -> 400
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "haker@example.com",
+  "password": "bardzo-dlugie-haslo",
+  "role": "ADMIN"
+}
+
+### 1.3 za krótkie hasło -> 400
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "ewa.krawczyk@example.com",
+  "password": "krotkie"
+}
+
+### 1.4 duplikat emaila różniący się wielkością liter -> 409 EMAIL_TAKEN
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "JAN.KOWALSKI@EXAMPLE.COM",
+  "password": "inne-dlugie-haslo"
+}
+
+############################################
+# ZADANIE 2 - logowanie i JWT
+############################################
+
+### 2.1 logowanie -> 200 + accessToken
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "mateusz.kalinski@example.com",
+  "password": "Haslo-Testowe-2026"
+}
+
+### 2.2 dane zalogowanego użytkownika (token z 2.1) -> 200
+GET {{baseUrl}}/auth/me
+Authorization: Bearer {{login.response.body.accessToken}}
+
+### 2.3 zły email -> 401
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "nie.ma.takiego@example.com",
+  "password": "Haslo-Testowe-2026"
+}
+
+### 2.4 złe hasło -> 401 (ta sama odpowiedź co przy złym emailu)
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "mateusz.kalinski@example.com",
+  "password": "zle-haslo-123"
+}
+
+############################################
+# ZADANIE 3 - authenticate (wszystkie -> 401)
+############################################
+# tokeny z: node scripts/tamper-token.js <accessToken z 2.1>
+@badSigToken = WKLEJ_TUTAJ_TOKEN_ZE_ZMIENIONYM_PODPISEM
+@forgedToken = WKLEJ_TUTAJ_TOKEN_Z_ROLE_ADMIN
+
+### 3.1 brak nagłówka Authorization -> 401
+GET {{baseUrl}}/reservations
+
+### 3.2 zły format: Basic zamiast Bearer -> 401
+GET {{baseUrl}}/reservations
+Authorization: Basic YWRtaW46aGFzbG8=
+
+### 3.3 zły format: Bearer bez tokenu -> 401
+GET {{baseUrl}}/reservations
+Authorization: Bearer
+
+### 3.4 token ze zmienionym jednym znakiem podpisu -> 401 Invalid token
+GET {{baseUrl}}/reservations
+Authorization: Bearer {{badSigToken}}
+
+### 3.5 token z payloadem zmienionym na ADMIN (oryginalny podpis) -> 401 Invalid token
+GET {{baseUrl}}/reservations
+Authorization: Bearer {{forgedToken}}
+
+### 3.6 token wygasły (server z JWT_EXPIRES_IN=10s, 2.1 wysłane > 10 s temu) -> 401 Token expired
+GET {{baseUrl}}/reservations
+Authorization: Bearer {{login.response.body.accessToken}}
+
+### 3.7 userId w body -> 400 (właściciela ustala token)
+POST {{baseUrl}}/reservations
+Content-Type: application/json
+Authorization: Bearer {{login.response.body.accessToken}}
+
+{
+  "roomId": 3,
+  "participants": 10,
+  "startTime": "2027-03-01T10:00:00Z",
+  "endTime": "2027-03-01T11:00:00Z",
+  "userId": 3
+}
+
+### 3.8 reservedBy w body -> 400
+POST {{baseUrl}}/reservations
+Content-Type: application/json
+Authorization: Bearer {{login.response.body.accessToken}}
+
+{
+  "roomId": 3,
+  "participants": 10,
+  "startTime": "2027-03-01T10:00:00Z",
+  "endTime": "2027-03-01T11:00:00Z",
+  "reservedBy": "Karolina Nowak"
+}
+
+### 3.9 poprawna rezerwacja -> 201, w odpowiedzi user: { id, email } z tokenu
+POST {{baseUrl}}/reservations
+Content-Type: application/json
+Authorization: Bearer {{login.response.body.accessToken}}
+
+{
+  "roomId": 3,
+  "participants": 10,
+  "startTime": "2027-03-01T10:00:00Z",
+  "endTime": "2027-03-01T11:00:00Z"
+}

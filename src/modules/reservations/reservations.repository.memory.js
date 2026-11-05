@@ -8,7 +8,7 @@ function defaultReservations() {
     {
       id: 1,
       roomId: 4,
-      reservedBy: "Mateusz Kaliński",
+      userId: 2,
       participants: 10,
       startTime: new Date(now - HOUR),
       endTime: new Date(now + HOUR),
@@ -20,19 +20,27 @@ function defaultReservations() {
   ];
 }
 
-// findRoom(id) - podawane przez unit of work, żeby zwracać rezerwację razem z salą i budynkiem
-function createReservationsRepository(seed = defaultReservations(), { findRoom = async () => null } = {}) {
+// findRoom(id), findUser(id) - podawane przez unit of work, żeby zwracać rezerwację razem z salą i użytkownikiem
+function createReservationsRepository(
+  seed = defaultReservations(),
+  { findRoom = async () => null, findUser = async () => null } = {}
+) {
   const reservations = structuredClone(seed);
   let nextReservationId = Math.max(0, ...reservations.map(r => r.id)) + 1;
 
   async function withRoom(reservation) {
     if (!reservation) return null;
     const room = await findRoom(reservation.roomId);
-    return { ...reservation, room: room ? { id: room.id, name: room.name, building: room.building } : null };
+    const user = await findUser(reservation.userId);
+    return {
+      ...reservation,
+      room: room ? { id: room.id, name: room.name, building: room.building } : null,
+      user: user ? { id: user.id, email: user.email } : null
+    };
   }
 
   return {
-    async list({ roomId, buildingId, status, from, to, page, limit, sort }) {
+    async list({ roomId, buildingId, userId, status, from, to, page, limit, sort }) {
       const all = await Promise.all(reservations.map(withRoom));
       const fromMs = from && new Date(from).getTime();
       const toMs = to && new Date(to).getTime();
@@ -40,6 +48,7 @@ function createReservationsRepository(seed = defaultReservations(), { findRoom =
       const filtered = all.filter(r =>
         (roomId === undefined || r.roomId === roomId) &&
         (buildingId === undefined || r.room?.building?.id === buildingId) &&
+        (userId === undefined || r.userId === userId) &&
         (status === undefined || r.status === status) &&
         (to === undefined || new Date(r.startTime).getTime() < toMs) &&
         (from === undefined || new Date(r.endTime).getTime() > fromMs)

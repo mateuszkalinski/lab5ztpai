@@ -8,7 +8,9 @@ function requestLogger(req, res, next) {
 
   res.on("finish", () => {
     const ms = Number(process.hrtime.bigint() - start) / 1e6;
-    console.log(`[${req.id}] ${req.method} ${req.originalUrl} -> ${res.statusCode} (${ms.toFixed(1)} ms)`);
+    // req.user ustawia authenticate - w logu widać, kto wykonał request
+    const who = req.user ? `user ${req.user.id} ${req.user.role}` : "bez tokenu";
+    console.log(`[${req.id}] ${req.method} ${req.originalUrl} -> ${res.statusCode} (${ms.toFixed(1)} ms) [${who}]`);
   });
 
   next();

@@ -1,7 +1,15 @@
 const express = require("express");
+const swaggerUi = require("swagger-ui-express");
+const config = require("./config");
+const openapi = require("./docs/openapi");
 const requestLogger = require("./middleware/requestLogger");
+const authenticate = require("./middleware/authenticate");
 const notFound = require("./middleware/notFound");
 const errorHandler = require("./middleware/errorHandler");
+
+const { createAuthService } = require("./modules/auth/auth.service");
+const { createAuthController } = require("./modules/auth/auth.controller");
+const { createAuthRouter } = require("./modules/auth/auth.routes");
 
 const { createBuildingsService } = require("./modules/buildings/buildings.service");
 const { createBuildingsController } = require("./modules/buildings/buildings.controller");
@@ -22,19 +30,24 @@ function createApp({ runInTransaction, now }) {
   app.use(requestLogger);
   app.use(express.json());
 
-  // składamy moduły: unit of work (repositories) -> service -> controller -> router
+  const authService = createAuthService({
+    runInTransaction,
+    jwtSecret: config.jwt.secret,
+    jwtExpiresIn: config.jwt.expiresIn,
+    bcryptRounds: config.bcryptRounds
+  });
   const buildingsService = createBuildingsService({ runInTransaction });
   const roomsService = createRoomsService({ runInTransaction });
   const reservationsService = createReservationsService({ runInTransaction, now });
 
-  app.use("/api/buildings", createBuildingsRouter(createBuildingsController(buildingsService)));
-  app.use("/api/rooms", createRoomsRouter(createRoomsController(roomsService)));
-  app.use("/api/reservations", createReservationsRouter(createReservationsController(reservationsService)));
+  // publiczne: dokumentacja, rejestracja i logowanie (/api/auth/me ma authenticate w routerze)
+  app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(openapi));
+  app.use("/api/auth", createAuthRouter(createAuthController(authService)));
 
-  // tymczasowy endpoint do pokazania obsługi 500
-  app.get("/api/debug/crash", () => {
-    throw new Error("boom");
-  });
+  // wszystko poniżej wymaga zalogowania
+  app.use("/api/buildings", authenticate, createBuildingsRouter(createBuildingsController(buildingsService)));
+  app.use("/api/rooms", authenticate, createRoomsRouter(createRoomsController(roomsService)));
+  app.use("/api/reservations", authenticate, createReservationsRouter(createReservationsController(reservationsService)));
 
   app.use(notFound);
   app.use(errorHandler);

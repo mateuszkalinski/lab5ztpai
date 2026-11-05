@@ -1,9 +1,9 @@
+const config = require("./config");
 const { createApp } = require("./app");
 
-// JEDYNE miejsce wyboru implementacji repositories:
-//   domyślnie PostgreSQL (Knex), REPOSITORY=memory -> tablice w pamięci
+// JEDYNE miejsce wyboru implementacji repositories (REPOSITORY=knex | memory)
 function createUnitOfWork() {
-  if (process.env.REPOSITORY === "memory") {
+  if (config.repository === "memory") {
     const { createMemoryUnitOfWork } = require("./db/unitOfWork.memory");
     console.log("Repositories: in-memory");
     return createMemoryUnitOfWork();
@@ -22,6 +22,6 @@ const app = createApp({
   now: () => new Date()
 });
 
-app.listen(3000, () => {
-  console.log("Server running on http://localhost:3000");
+app.listen(config.port, () => {
+  console.log(`Server running on http://localhost:${config.port}`);
 });

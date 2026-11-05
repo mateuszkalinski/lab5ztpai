@@ -1,7 +1,7 @@
 // camelCase (aplikacja) -> snake_case (baza)
 const COLUMNS = {
   roomId: "room_id",
-  reservedBy: "reserved_by",
+  userId: "user_id",
   participants: "participants",
   startTime: "start_time",
   endTime: "end_time",
@@ -35,7 +35,8 @@ function toReservation(row) {
       name: row.room_name,
       building: { id: row.building_id, name: row.building_name }
     },
-    reservedBy: row.reserved_by,
+    userId: row.user_id,
+    user: { id: row.user_id, email: row.user_email },
     participants: row.participants,
     startTime: row.start_time,
     endTime: row.end_time,
@@ -45,12 +46,13 @@ function toReservation(row) {
   };
 }
 
-// rezerwacja + sala + budynek w JEDNYM zapytaniu (dwa JOIN-y) - brak N+1
+// rezerwacja + sala + budynek + użytkownik w JEDNYM zapytaniu - brak N+1
 function reservationsWithRoom(db) {
   return db("reservations as res")
     .join("rooms as r", "r.id", "res.room_id")
     .join("buildings as b", "b.id", "r.building_id")
-    .select("res.*", "r.name as room_name", "b.id as building_id", "b.name as building_name");
+    .join("users as u", "u.id", "res.user_id")
+    .select("res.*", "r.name as room_name", "b.id as building_id", "b.name as building_name", "u.email as user_email");
 }
 
 function createReservationsRepository(db) {
@@ -59,11 +61,12 @@ function createReservationsRepository(db) {
   }
 
   return {
-    async list({ roomId, buildingId, status, from, to, page, limit, sort }) {
+    async list({ roomId, buildingId, userId, status, from, to, page, limit, sort }) {
       // filtry - WHERE dokładany tylko wtedy, gdy parametr został podany
       const filtered = reservationsWithRoom(db).modify(qb => {
         if (roomId !== undefined) qb.where("res.room_id", roomId);
         if (buildingId !== undefined) qb.where("r.building_id", buildingId);
+        if (userId !== undefined) qb.where("res.user_id", userId);
         if (status !== undefined) qb.where("res.status", status);
         // nakładanie się przedziałów półotwartych [from, to): start < to AND end > from
         if (to !== undefined) qb.where("res.start_time", "<", new Date(to));

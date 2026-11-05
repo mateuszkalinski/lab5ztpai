@@ -1,12 +1,8 @@
-try {
-  process.loadEnvFile();
-} catch {
-  // brak pliku .env - zmienne mogą przyjść z zewnątrz (np. z Dockera)
-}
+const config = require("./src/config");
 
 module.exports = {
   client: "pg",
-  connection: process.env.DATABASE_URL,
+  connection: config.databaseUrl,
   migrations: { directory: "./src/db/migrations" },
   seeds: { directory: "./src/db/seeds" }
 };

@@ -15,7 +15,6 @@ async function main() {
 
   const { count } = await db("reservations").count({ count: "*" }).first();
   const missing = n - Number(count);
-  const names = ["Jan Kowalski", "Anna Wiśniewska", "Piotr Mazur", "Ewa Krawczyk", "Michał Kaczmarek"];
 
   const rows = [];
   for (let i = 0; i < missing; i++) {
@@ -23,7 +22,7 @@ async function main() {
     start.setHours(10, 0, 0, 0);
     rows.push({
       room_id: (i % 6) + 1,
-      reserved_by: names[i % names.length],
+      user_id: (i % 5) + 2, // użytkownicy z seeda (id 2-6)
       participants: 10 + (i % 10),
       start_time: start,
       end_time: new Date(start.getTime() + 90 * 60 * 1000),

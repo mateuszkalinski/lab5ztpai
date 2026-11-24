@@ -1,0 +1,61 @@
+### Lab 5 - scenariusz audit logu (VS Code REST Client)
+### Wymaga: docker compose up --build  oraz  docker compose exec api npx knex seed:run
+@base = http://localhost:3000
+
+### 1. Logowanie USER
+# @name loginUser
+POST {{base}}/api/auth/login
+Content-Type: application/json
+
+{ "email": "mateusz.kalinski@example.com", "password": "Haslo-Testowe-2026" }
+
+###
+@userToken = {{loginUser.response.body.accessToken}}
+
+### 2. Logowanie ADMIN
+# @name loginAdmin
+POST {{base}}/api/auth/login
+Content-Type: application/json
+
+{ "email": "admin@example.com", "password": "Admin-Haslo-2026" }
+
+###
+@adminToken = {{loginAdmin.response.body.accessToken}}
+
+### 3. Utworzenie rezerwacji (USER) -> 201 + event reservation.created
+# @name created
+POST {{base}}/api/reservations
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{ "roomId": 3, "participants": 10, "startTime": "2030-06-01T10:00:00Z", "endTime": "2030-06-01T11:00:00Z" }
+
+###
+@reservationId = {{created.response.body.id}}
+
+### 4. Nieudana próba kolizji -> 409 ROOM_ALREADY_BOOKED, BRAK eventu
+POST {{base}}/api/reservations
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{ "roomId": 3, "participants": 5, "startTime": "2030-06-01T10:30:00Z", "endTime": "2030-06-01T11:30:00Z" }
+
+### 5. Anulowanie przez ADMINa -> 200 + event reservation.cancelled + [notification] w logach api
+PATCH {{base}}/api/reservations/{{reservationId}}/cancel
+Authorization: Bearer {{adminToken}}
+
+### 6. Ponowne anulowanie -> 200 (idempotentne), BRAK eventu
+PATCH {{base}}/api/reservations/{{reservationId}}/cancel
+Authorization: Bearer {{adminToken}}
+
+### 7. Audit log (ADMIN) - od najnowszych
+GET {{base}}/api/admin/audit-log
+Authorization: Bearer {{adminToken}}
+
+### 8. Audit log z filtrem
+GET {{base}}/api/admin/audit-log?eventType=reservation.created&limit=5
+Authorization: Bearer {{adminToken}}
+
+### 9. Audit log jako USER -> 403
+GET {{base}}/api/admin/audit-log
+Authorization: Bearer {{userToken}}

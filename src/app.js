@@ -23,7 +23,15 @@ const { createReservationsService } = require("./modules/reservations/reservatio
 const { createReservationsController } = require("./modules/reservations/reservations.controller");
 const { createReservationsRouter } = require("./modules/reservations/reservations.routes");
 
-function createApp({ runInTransaction, now }) {
+const { createAuditService } = require("./modules/audit/audit.service");
+const { createAuditController } = require("./modules/audit/audit.controller");
+const { createAuditRouter } = require("./modules/audit/audit.routes");
+
+const { createEventBus } = require("./events/eventBus");
+const { registerListeners } = require("./events/registerListeners");
+
+// eventBus można podać z zewnątrz (server.js - graceful shutdown, testy - drain())
+function createApp({ runInTransaction, now = () => new Date(), eventBus = createEventBus() }) {
   const app = express();
   app.set("json spaces", 2);
 
@@ -38,7 +46,11 @@ function createApp({ runInTransaction, now }) {
   });
   const buildingsService = createBuildingsService({ runInTransaction });
   const roomsService = createRoomsService({ runInTransaction });
-  const reservationsService = createReservationsService({ runInTransaction, now });
+  const reservationsService = createReservationsService({ runInTransaction, now, eventBus });
+  const auditService = createAuditService({ runInTransaction });
+
+  // audit log + powiadomienia nasłuchują eventów z service'u rezerwacji
+  registerListeners({ eventBus, runInTransaction });
 
   // publiczne: dokumentacja, rejestracja i logowanie (/api/auth/me ma authenticate w routerze)
   app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(openapi));
@@ -48,6 +60,7 @@ function createApp({ runInTransaction, now }) {
   app.use("/api/buildings", authenticate, createBuildingsRouter(createBuildingsController(buildingsService)));
   app.use("/api/rooms", authenticate, createRoomsRouter(createRoomsController(roomsService)));
   app.use("/api/reservations", authenticate, createReservationsRouter(createReservationsController(reservationsService)));
+  app.use("/api/admin", authenticate, createAuditRouter(createAuditController(auditService)));
 
   app.use(notFound);
   app.use(errorHandler);

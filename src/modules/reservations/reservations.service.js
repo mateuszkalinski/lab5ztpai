@@ -1,4 +1,6 @@
 const { NotFoundError, ConflictError, ValidationError, ForbiddenError } = require("../../errors/AppError");
+const { noopEventBus } = require("../../events/eventBus");
+const { EVENTS } = require("../../events/eventTypes");
 
 const MINUTE = 60 * 1000;
 const MIN_DURATION = 15 * MINUTE;  // 15 minut
@@ -24,7 +26,11 @@ function canAccess(reservation, currentUser) {
   return currentUser.role === "ADMIN" || reservation.userId === currentUser.id;
 }
 
-function createReservationsService({ runInTransaction, now = () => new Date() }) {
+function toIso(value) {
+  return new Date(value).toISOString();
+}
+
+function createReservationsService({ runInTransaction, now = () => new Date(), eventBus = noopEventBus }) {
   async function listReservations(query, currentUser) {
     let userId = query.userId;
 
@@ -76,7 +82,7 @@ function createReservationsService({ runInTransaction, now = () => new Date() })
       throw bodyError("startTime", "Czas rozpoczecia musi byc w przyszlosci");
     }
 
-    return runInTransaction(async ({ rooms, reservations }) => {
+    const reservation = await runInTransaction(async ({ rooms, reservations }) => {
       // sala musi istnieć -> 404
       const room = await rooms.findById(input.roomId);
       if (!room) throw new NotFoundError("Room");
@@ -112,16 +118,27 @@ function createReservationsService({ runInTransaction, now = () => new Date() })
         internalNote: "created via API v2"
       });
     });
+
+    // tu transakcja jest już zatwierdzona (COMMIT). Błąd (400/404/409) wyleciał wyżej -> brak eventu.
+    eventBus.publish(EVENTS.RESERVATION_CREATED, {
+      reservationId: reservation.id,
+      roomId: reservation.roomId,
+      userId: reservation.userId,
+      startTime: toIso(reservation.startTime),
+      endTime: toIso(reservation.endTime)
+    });
+
+    return reservation;
   }
 
   async function cancelReservation(id, currentUser) {
-    return runInTransaction(async ({ reservations }) => {
+    const { reservation, changed } = await runInTransaction(async ({ reservations }) => {
       const reservation = await findAccessible(reservations, id, currentUser);
 
       const newStatus = "CANCELLED";
 
-      // idempotentność: ponowne anulowanie zwraca rezerwację bez zmian
-      if (reservation.status === newStatus) return reservation;
+      // idempotentność: ponowne anulowanie zwraca rezerwację bez zmian (i bez eventu)
+      if (reservation.status === newStatus) return { reservation, changed: false };
 
       if (!ALLOWED_TRANSITIONS[reservation.status].includes(newStatus)) {
         throw new ConflictError(
@@ -138,8 +155,21 @@ function createReservationsService({ runInTransaction, now = () => new Date() })
         );
       }
 
-      return reservations.update(id, { status: newStatus, cancelledAt: now() });
+      const updated = await reservations.update(id, { status: newStatus, cancelledAt: now() });
+      return { reservation: updated, changed: true };
     });
+
+    // po COMMIT i tylko wtedy, gdy status faktycznie się zmienił
+    if (changed) {
+      eventBus.publish(EVENTS.RESERVATION_CANCELLED, {
+        reservationId: reservation.id,
+        roomId: reservation.roomId,
+        userId: reservation.userId,
+        cancelledBy: currentUser.id
+      });
+    }
+
+    return reservation;
   }
 
   return { listReservations, getReservation, createReservation, cancelReservation };

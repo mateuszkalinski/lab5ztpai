@@ -9,11 +9,11 @@ module.exports = {
   openapi: "3.0.3",
   info: {
     title: "Room Booking API",
-    version: "4.0.0",
+    version: "5.0.0",
     description: "Rezerwacja sal. Role: USER (budynki i sale do odczytu, własne rezerwacje), ADMIN (zarządzanie budynkami i salami, wszystkie rezerwacje)."
   },
   servers: [{ url: "/" }],
-  tags: [{ name: "Auth" }, { name: "Buildings" }, { name: "Rooms" }, { name: "Reservations" }],
+  tags: [{ name: "Auth" }, { name: "Buildings" }, { name: "Rooms" }, { name: "Reservations" }, { name: "Admin" }],
 
   paths: {
     "/api/auth/register": {
@@ -146,6 +146,20 @@ module.exports = {
           409: { description: "Rezerwacja już się rozpoczęła (RESERVATION_ALREADY_STARTED)", ...json(ref("Error")) }
         }
       }
+    },
+    "/api/admin/audit-log": {
+      get: {
+        tags: ["Admin"], summary: "Audit log eventów (tylko ADMIN), od najnowszych", security: secured,
+        parameters: [
+          { name: "eventType", in: "query", schema: { type: "string", enum: ["reservation.created", "reservation.cancelled"] } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 100, default: 20 } }
+        ],
+        responses: {
+          200: { description: "OK", ...json({ type: "object", properties: { data: { type: "array", items: ref("AuditLogEntry") }, meta: ref("PaginationMeta") } }) },
+          400: err("BadRequest"), 401: err("Unauthorized"), 403: err("Forbidden")
+        }
+      }
     }
   },
 
@@ -160,6 +174,15 @@ module.exports = {
       NotFound: { description: "Nie znaleziono (NOT_FOUND)", ...json(ref("Error")) }
     },
     schemas: {
+      AuditLogEntry: {
+        type: "object",
+        properties: {
+          id: { type: "integer", example: 1 },
+          eventType: { type: "string", example: "reservation.created" },
+          payload: { type: "object", example: { reservationId: 7, roomId: 1, userId: 2, startTime: "2030-01-02T10:00:00.000Z", endTime: "2030-01-02T11:00:00.000Z" } },
+          createdAt: { type: "string", format: "date-time" }
+        }
+      },
       // format błędu - zdefiniowany raz i używany wszędzie przez $ref
       Error: {
         type: "object",

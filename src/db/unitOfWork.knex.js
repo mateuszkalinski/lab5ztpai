@@ -2,6 +2,7 @@ const { createUsersRepository } = require("../modules/users/users.repository.kne
 const { createBuildingsRepository } = require("../modules/buildings/buildings.repository.knex");
 const { createRoomsRepository } = require("../modules/rooms/rooms.repository.knex");
 const { createReservationsRepository } = require("../modules/reservations/reservations.repository.knex");
+const { createAuditLogRepository } = require("../modules/audit/audit.repository.knex");
 
 // te same repositories, raz na "db", raz na obiekcie transakcji "trx" (ma to samo API)
 function createKnexRepositories(db) {
@@ -9,7 +10,8 @@ function createKnexRepositories(db) {
     users: createUsersRepository(db),
     buildings: createBuildingsRepository(db),
     rooms: createRoomsRepository(db),
-    reservations: createReservationsRepository(db)
+    reservations: createReservationsRepository(db),
+    auditLog: createAuditLogRepository(db)
   };
 }
 

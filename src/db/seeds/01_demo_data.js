@@ -16,7 +16,7 @@ function at(daysFromNow, hour, minute = 0) {
 
 exports.seed = async function (knex) {
   // czyścimy tabele i resetujemy liczniki ID -> po każdym seed:run ten sam stan
-  await knex.raw("TRUNCATE reservations, rooms, buildings, users RESTART IDENTITY CASCADE");
+  await knex.raw("TRUNCATE audit_log, reservations, rooms, buildings, users RESTART IDENTITY CASCADE");
 
   const adminHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
   const userHash = await bcrypt.hash(USER_PASSWORD, 10);

@@ -14,7 +14,7 @@ const ALLOWED_TRANSITIONS = {
 
 // przedziały półotwarte [start, end): nakładają się, gdy A.start < B.end i B.start < A.end
 function overlaps(aStart, aEnd, bStart, bEnd) {
-  return aStart <= bEnd && bStart <= aEnd;
+  return aStart < bEnd && bStart < aEnd;
 }
 
 function bodyError(field, message) {

@@ -1,15 +1,41 @@
+# Wszystkie wartości (hasła, sekrety) pochodzą z pliku .env (wzór: .env.example).
+# Docker Compose sam wczytuje .env z katalogu projektu i podstawia ${ZMIENNA}.
 services:
   db:
     image: postgres:16
     container_name: roombooking-db
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: roombooking
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5432}:5432"
     volumes:
       - roombooking-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # -h 127.0.0.1: "healthy" dopiero gdy baza przyjmuje połączenia TCP (po inicjalizacji)
+      # $$ -> zmienna rozwijana wewnątrz kontenera, a nie przez Compose
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  api:
+    build: .
+    container_name: roombooking-api
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
+      BCRYPT_ROUNDS: ${BCRYPT_ROUNDS:-12}
+    ports:
+      - "${API_PORT:-3000}:3000"
+    restart: unless-stopped
 
 volumes:
   roombooking-pgdata:

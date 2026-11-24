@@ -1,4 +1,5 @@
 node_modules
 .env
+coverage
 service-diff.txt
 auth-tests-output.txt
